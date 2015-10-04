@@ -226,6 +226,7 @@ func (p *OutputParser) parseOutput(outputSections []OutSection, dscr *Descriptor
 	return nil
 }
 func (p *OutputParser) Process(buffer bytes.Buffer, dscr *Descriptor) (*Descriptor, error) {
+	p.Failed = false
 	p.DebugOutput = bytes.Buffer{}
 	p.DebugOutput.Write([]byte("<<<\n"))
 
@@ -247,7 +248,6 @@ func (p *OutputParser) Process(buffer bytes.Buffer, dscr *Descriptor) (*Descript
 
 func NewParser(initFunction InitFunc, initDscrFunc InitDscrFunc) *OutputParser {
 	p := new(OutputParser)
-	p.Failed = false
 	p.sections = map[SectionName]sectionDescriptor{}
 	p.sectionsSeq = []SectionName{}
 	p.initDscr = initDscrFunc

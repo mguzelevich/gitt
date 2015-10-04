@@ -38,25 +38,8 @@ func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func gitPull(path string) {
-	fmt.Fprintf(os.Stderr, "=== %s ===\n\n", path)
-
-	cmd := exec.Command(gitbinary, "pull")
-	cmd.Dir = path
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Start()
-	checkError(err)
-	cmd.Wait()
-	fmt.Println("\n")
-
-	_ = pull.NewParser()
-
-}
-
-func gitStatusAction(path string) {
-	cmd := exec.Command(gitbinary, "status")
+func gitCmd(path string, cmd *exec.Cmd, p *parser.OutputParser) {
+	//	cmd := exec.Command(gitbinary, "pull")
 	cmd.Dir = path
 
 	//cmd.Stdin = strings.NewReader("some input")
@@ -70,7 +53,6 @@ func gitStatusAction(path string) {
 		return
 	}
 
-	p := status.NewParser()
 	dscr := parser.NewDescriptor()
 
 	if dscr, err := p.Process(out, dscr); err != nil {
@@ -108,19 +90,22 @@ func walker(root string, action Action) {
 }
 
 func actionApplier(dirs []string, action Action) {
-	var actionHandler func(path string)
+	var cmd string
+	var p *parser.OutputParser
 
 	switch action {
 	case GIT_PULL:
-		actionHandler = gitPull
+		cmd = "pull"
+		p = pull.NewParser()
 	case GIT_STATUS:
-		actionHandler = gitStatusAction
+		cmd = "status"
+		p = status.NewParser()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown [%s] mode", action)
 	}
 
 	for _, d := range dirs {
-		actionHandler(d)
+		gitCmd(d, exec.Command(gitbinary, cmd), p)
 	}
 }
 
