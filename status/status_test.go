@@ -11,7 +11,6 @@ import (
 
 func TestGitStatus_1(t *testing.T) {
 	for i, fixture := range testGitStatusFixtures {
-		break
 		buffer := bytes.Buffer{}
 		buffer.Write([]byte(fixture.input))
 

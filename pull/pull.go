@@ -2,6 +2,7 @@ package pull
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -119,11 +120,11 @@ func initGitPullParser(p *parser.OutputParser) error {
 
 	p.RegSection(GSPULL_REMOTE,
 		[]parser.OutLineRE{
-			parser.NewRE("counting", `^remote: Counting objects: ([0-9]+), done\.$`),
+			parser.NewRE("counting", `^remote\: Counting objects\: ([0-9]+), done\.$`),
 			parser.NewRE("compressing", `^remote: Compressing objects: ([0-9]+)% \((.+)/(.+)\), done\.$`),
 			parser.NewRE("total", `^remote: Total ([0-9]+) \(delta ([0-9]+)\), reused ([0-9]+) \(delta ([0-9]+)\)$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			//printMatches(matches)
 			switch name {
 			case "counting":
@@ -156,7 +157,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 		[]parser.OutLineRE{
 			parser.NewRE("", `^Unpacking objects: ([0-9]+)% \((.+)/(.+)\), done.$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			c, _ := strconv.Atoi(matches[1])
 			dscr.SetField(GPULL_UNPACKING_PERCENT, c)
 			c, _ = strconv.Atoi(matches[2])
@@ -173,7 +174,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 			parser.NewRE("existed", `^([0-9a-z]+\.\.[0-9a-z]+) +(.+) +-> +(.+)$`),
 			parser.NewRE("new", `^\* \[new branch\] +(.+) +-> +(.+)$`),
 		},
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			dscr.SetString(GPULL_REPO_NAME, strings.TrimSpace(matches[1]))
 			return nil
 		},
@@ -193,7 +194,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 		[]parser.OutLineRE{
 			parser.NewRE("", `^Updating (.+)$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			dscr.SetString(GPULL_LOCAL_COMMIT, matches[1])
 			return nil
 		},
@@ -205,12 +206,12 @@ func initGitPullParser(p *parser.OutputParser) error {
 		},
 		[]parser.OutLineRE{
 			parser.NewRE("changes_rename", `^(.+) => (.+) +\| +([0-9]+) ([\+\-]+)$`),
-			parser.NewRE("changes", `^(.+) +\| +([0-9]+) ([\+\-]+)$`),
-			parser.NewRE("summary", `^([0-9]+) file[s]* changed(, ([0-9]+) ((insertions)|(deletions))\([\+\-]\))(, ([0-9]+) ((insertions)|(deletions))\([\+\-]\))*$`),
+			parser.NewRE("changes", `^(.+) +\| +([0-9]+)( [\+\-]+)*$`),
+			parser.NewRE("summary", `^([0-9]+) file[s]* changed(, ([0-9]+) ((insertion[s]*)|(deletion[s]*))\([\+\-]\))(, ([0-9]+) ((insertion[s]*)|(deletion[s]*))\([\+\-]\))*$`),
 			parser.NewRE("create", `^create mode ([0-9]+) (.+)`),
 			parser.NewRE("rename", `^rename (.+) => (.+) \(([0-9]+)%\)`),
 			parser.NewRE("delete", `^delete mode ([0-9]+) (.+)`),
-		}, parser.DummyHandler,
+		}, parser.DummyTitleHandler,
 		func(name string, matches []string, dscr *parser.Descriptor) error {
 			// printMatches(name, matches)
 			var fdi interface{}
@@ -219,7 +220,12 @@ func initGitPullParser(p *parser.OutputParser) error {
 				oldFilename := strings.TrimSpace(matches[1])
 				filename := strings.TrimSpace(matches[2])
 				lines, _ := strconv.Atoi(matches[3])
-				added, deleted := git.ParseDiffLine(matches[4])
+				added, deleted, err := git.ParseDiffLine(matches[4])
+				if err != nil {
+					printMatches(name, matches)
+					p.Failed = true
+					return err
+				}
 				fd := git.FileData{
 					Operation:    "renamed",
 					Filename:     filename,
@@ -233,7 +239,12 @@ func initGitPullParser(p *parser.OutputParser) error {
 				// printMatches(name, matches)
 				filename := strings.TrimSpace(matches[1])
 				lines, _ := strconv.Atoi(matches[2])
-				added, deleted := git.ParseDiffLine(matches[3])
+				added, deleted, err := git.ParseDiffLine(matches[3])
+				if err != nil {
+					printMatches(name, matches)
+					p.Failed = true
+					return err
+				}
 				fd := git.FileData{
 					Operation:    "",
 					Filename:     filename,
@@ -271,6 +282,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
 					printMatches(name, matches)
 					p.Failed = true
+					return errors.New("file not find")
 				}
 				fd := fdi.(git.FileData)
 				fd.Mode = mode
@@ -283,10 +295,13 @@ func initGitPullParser(p *parser.OutputParser) error {
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
 					printMatches(name, matches)
 					p.Failed = true
+					return errors.New("file not find")
 				}
 				fd := fdi.(git.FileData)
 				if oldFilename != fd.OldFilename && fd.Operation != "renamed" {
+					printMatches(name, matches)
 					p.Failed = true
+					return errors.New("file not find")
 				}
 				fd.DiffPercent = diffPercent
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
@@ -295,13 +310,17 @@ func initGitPullParser(p *parser.OutputParser) error {
 				mode, _ := strconv.Atoi(matches[1])
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
 					printMatches(name, matches)
+					p.Failed = true
+					return errors.New("file not find")
 				}
 				fd := fdi.(git.FileData)
 				fd.Mode = mode
 				fd.Operation = "deleted"
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
 			default:
+				printMatches(name, matches)
 				p.Failed = true
+				return errors.New("GSPULL_FAST_FORWARD body parsing error")
 			}
 			return nil
 		})
@@ -309,7 +328,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 		[]parser.OutLineRE{
 			parser.NewRE("", `^Already up-to-date\.$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			dscr.SetString(GPULL_UP_TO_DATE, "true")
 			return nil
 		}, parser.DummyHandler)

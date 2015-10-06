@@ -3,6 +3,7 @@ package status
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -62,28 +63,45 @@ func initGitStatusParser(p *parser.OutputParser) error {
 		[]parser.OutLineRE{
 			parser.NewRE("", `^On branch (.*)$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
+			//printMatches(name, matches)
 			dscr.SetString(GST_BRANCH, matches[1])
 			return nil
 		}, parser.DummyHandler)
 
 	p.RegSection(GSST_BRANCH_DIFF,
 		[]parser.OutLineRE{
-			parser.NewRE("", `^(Initial commit)|(Your branch is ((ahead of)|(up-to-date with)) '(.+)'( by ([0-9]+) commit[s]*)*.)$`),
+			parser.NewRE("initial", `^Initial commit$`),
+			parser.NewRE("ahead", `^Your branch is ahead of '(.+)'( by ([0-9]+) commit[s]*)*.$`),
+			parser.NewRE("up_to_date", `^Your branch is up-to-date with '(.+)'\.$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
-			switch {
-			case matches[1] == "Initial commit":
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
+			switch name {
+			case "initial":
 				dscr.SetString(GST_PAIR_BRANCH, "<initial commit>")
-			case matches[3] == "ahead of":
-				dscr.SetString(GST_PAIR_BRANCH, matches[6])
+			case "ahead":
+				dscr.SetString(GST_PAIR_BRANCH, matches[1])
 				aheadCommits, _ := strconv.Atoi(matches[8])
 				dscr.SetField(GST_AHEAD_COMMITS, aheadCommits)
-			case matches[3] == "up-to-date with":
-				dscr.SetString(GST_PAIR_BRANCH, matches[6])
+			case "up_to_date":
+				dscr.SetString(GST_PAIR_BRANCH, matches[1])
 			default:
 				p.Failed = true
 			}
+			/*
+				switch {
+				case matches[1] == "Initial commit":
+					dscr.SetString(GST_PAIR_BRANCH, "<initial commit>")
+				case matches[3] == "ahead of":
+					dscr.SetString(GST_PAIR_BRANCH, matches[6])
+					aheadCommits, _ := strconv.Atoi(matches[8])
+					dscr.SetField(GST_AHEAD_COMMITS, aheadCommits)
+				case matches[3] == "up-to-date with":
+					dscr.SetString(GST_PAIR_BRANCH, matches[6])
+				default:
+					p.Failed = true
+				}
+			*/
 			return nil
 		}, parser.DummyHandler)
 	p.RegSection(GSST_BRANCH_DIVIRGED,
@@ -91,7 +109,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 			parser.NewRE("remote", `^Your branch and '(.*)' have diverged,$`),
 			parser.NewRE("diff", `^and have (.*) and (.*) different commits each, respectively.$`),
 		}, nil,
-		func(name string, matches []string, dscr *parser.Descriptor) error {
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			switch name {
 			case "remote":
 				dscr.SetString(GST_PAIR_BRANCH, matches[1])
@@ -115,7 +133,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 			parser.NewRE("deleted", `^deleted: +(.*)$`),
 			parser.NewRE("renamed", `^renamed: +(.+) -> (.+)$`),
 		},
-		parser.DummyHandler,
+		parser.DummyTitleHandler,
 		func(name string, matches []string, dscr *parser.Descriptor) error {
 			filename := strings.TrimSpace(matches[1]) // file
 			switch name {
@@ -148,7 +166,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 			parser.NewRE("deleted", `^deleted: +(.*)$`),
 			parser.NewRE("renamed", `^renamed: +(.+) -> (.+)$`),
 		},
-		parser.DummyHandler,
+		parser.DummyTitleHandler,
 		func(name string, matches []string, dscr *parser.Descriptor) error {
 			filename := matches[1] // file
 			switch name {
@@ -178,7 +196,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 		[]parser.OutLineRE{
 			parser.NewRE("", `^(.*)$`),
 		},
-		parser.DummyHandler,
+		parser.DummyTitleHandler,
 		func(name string, matches []string, dscr *parser.Descriptor) error {
 			filename := matches[1] // file
 			dscr.AppendItem(GST_UNTRACKED, filename)
@@ -192,7 +210,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 			parser.NewRE("nothing_to_commit", `^nothing to commit \(create/copy files and use "git add" to track\)$`),
 			parser.NewRE("nothing_added_to_commit", `^nothing added to commit but untracked files present \(use "git add" to track\)$`),
 		},
-		nil, parser.DummyHandler, parser.DummyHandler)
+		nil, parser.DummyTitleHandler, parser.DummyHandler)
 	return nil
 }
 
@@ -267,6 +285,10 @@ func gitStatusAsString(dscr *parser.Descriptor, useAnsiColors bool) string {
 		dscr.AddToOut(&output, parser.MakeFilesList(untracked, "    ? "), parser.AnsiColor("yellow", useAnsiColors))
 	}
 	return output.String()
+}
+
+func printMatches(name string, matches []string) {
+	fmt.Fprintf(os.Stderr, "> %s : %s\n", name, strings.Join(matches, "|"))
 }
 
 func NewParser() *parser.OutputParser {

@@ -1,5 +1,9 @@
 package git
 
+import (
+	"errors"
+)
+
 type BranchesLink struct {
 	Hash   string
 	Local  string
@@ -31,18 +35,18 @@ func (slice Files) Swap(i, j int) {
 	slice[i], slice[j] = slice[j], slice[i]
 }
 
-func ParseDiffLine(line string) (int, int) {
+func ParseDiffLine(line string) (int, int, error) {
 	add := 0
 	del := 0
 	for _, s := range line {
 		switch s {
 		default:
-			panic("unknown diff line symbol")
+			return 0, 0, errors.New("unknown diff line symbol")
 		case '+':
 			add += 1
 		case '-':
 			del += 1
 		}
 	}
-	return add, del
+	return add, del, nil
 }

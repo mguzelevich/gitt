@@ -38,33 +38,36 @@ func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func gitCmd(path string, cmd *exec.Cmd, p *parser.OutputParser) {
-	//	cmd := exec.Command(gitbinary, "pull")
+func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputParser) {
+	cmd := exec.Command(gitbinary, cmdString)
 	cmd.Dir = path
 
 	//cmd.Stdin = strings.NewReader("some input")
 	var out bytes.Buffer
 	cmd.Stdout = &out // os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &out // os.Stderr
 
-	err := cmd.Run()
-	if err != nil {
-		fmt.Printf("Err %q\n", err)
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR [%s]\n", err)
 		return
 	}
 
-	dscr := parser.NewDescriptor()
+	dscr, err := p.Process(out, parser.NewDescriptor())
+	//fmt.Fprintf(os.Stderr, "!!! [%s]\n", p.DebugOutput.String())
 
-	if dscr, err := p.Process(out, dscr); err != nil {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n<ERROR parser process>\n", path)
 		fmt.Fprintf(os.Stderr, "=== %s ===\n", path)
-		fmt.Printf("%s", out.String())
-		fmt.Printf("Err %s", err.Error())
-		fmt.Printf(p.DebugOutput.String())
+		fmt.Fprintf(os.Stderr, "OUT:\n%s\n", out.String())
+		fmt.Fprintf(os.Stderr, "ERR:\n%s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "DBG:\n%s\n", p.DebugOutput.String())
+		fmt.Fprintf(os.Stderr, "</ERROR>\n")
 	} else if p.Failed {
+		fmt.Fprintf(os.Stderr, "\n<ERROR parser failed>\n", path)
 		fmt.Fprintf(os.Stderr, "=== %s ===\n", path)
-		fmt.Printf("%s", out.String())
-		fmt.Printf("Err %s", err.Error())
-		fmt.Printf(p.DebugOutput.String())
+		fmt.Fprintf(os.Stderr, "OUT:\n%s\n", out.String())
+		fmt.Fprintf(os.Stderr, "DBG:\n%s\n", p.DebugOutput.String())
+		fmt.Fprintf(os.Stderr, "</ERROR>\n")
 	} else {
 		fmt.Fprintf(os.Stderr, "=== %s %s", path, dscr.AsString(dscr, true))
 		// fmt.Printf("%s", out.String())
@@ -105,7 +108,7 @@ func actionApplier(dirs []string, action Action) {
 	}
 
 	for _, d := range dirs {
-		gitCmd(d, exec.Command(gitbinary, cmd), p)
+		gitCmd(d, gitbinary, cmd, p)
 	}
 }
 

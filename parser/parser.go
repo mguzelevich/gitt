@@ -2,9 +2,9 @@ package parser
 
 import (
 	"bytes"
-	"fmt"
-	//	"os"
 	"errors"
+	"fmt"
+	"os"
 	"regexp"
 	//"strconv"
 	"strings"
@@ -13,8 +13,6 @@ import (
 type InitFunc func(p *OutputParser) error
 
 type InitDscrFunc func(dscr *Descriptor) error
-
-type sectionHandler func(name string, matches []string, dscr *Descriptor) error
 
 type SectionName string
 
@@ -26,8 +24,12 @@ type sectionDescriptor struct {
 	reTitle      []namedRe
 	reBody       []namedRe
 	handlerTitle sectionHandler
-	handlerBody  sectionHandler
+	handlerBody  bodyHandler
 }
+
+type sectionHandler func(section SectionName, name string, matches []string, dscr *Descriptor) error
+
+type bodyHandler func(name string, matches []string, dscr *Descriptor) error
 
 type OutputParser struct {
 	Failed      bool
@@ -43,9 +45,31 @@ type OutputParser struct {
 	sections    map[SectionName]sectionDescriptor
 }
 
-type OutSection struct {
-	titles []string
-	body   []string
+type matchResult struct {
+	reName  string
+	matches []string
+}
+
+type Section struct {
+	name   SectionName
+	titles []matchResult
+	body   []matchResult
+}
+
+type Output []Section
+
+func (o Output) String() string {
+	out := bytes.Buffer{}
+	for i, s := range o {
+		fmt.Fprintf(&out, "[%03d] %s\n", i, s.name)
+		for _, st := range s.titles {
+			fmt.Fprintf(&out, "t: %s\n", st.reName)
+		}
+		for _, sb := range s.body {
+			fmt.Fprintf(&out, "b: %s\n", sb.reName)
+		}
+	}
+	return out.String()
 }
 
 type OutLineRE struct {
@@ -62,7 +86,10 @@ func NewRE(name string, re string) OutLineRE {
 	return OutLineRE{name, re}
 }
 
-func (p *OutputParser) RegSection(section SectionName, reTitle []OutLineRE, reBody []OutLineRE, handlerTitle sectionHandler, handlerBody sectionHandler) {
+func (p *OutputParser) RegSection(section SectionName,
+	reTitle []OutLineRE, reBody []OutLineRE,
+	handlerTitle sectionHandler, handlerBody bodyHandler) {
+
 	sd := sectionDescriptor{
 		reTitle:      []namedRe{},
 		reBody:       []namedRe{},
@@ -79,21 +106,29 @@ func (p *OutputParser) RegSection(section SectionName, reTitle []OutLineRE, reBo
 	p.sectionsSeq = append(p.sectionsSeq, section)
 }
 
+func DummyTitleHandler(section SectionName, name string, matches []string, dscr *Descriptor) error {
+	return nil
+}
+
 func DummyHandler(name string, matches []string, dscr *Descriptor) error {
 	return nil
 }
 
-func (p *OutputParser) splitOutput(buffer bytes.Buffer) ([]OutSection, error) {
-	outSections := []OutSection{}
+func (p *OutputParser) splitOutput(buffer bytes.Buffer) (Output, error) {
+	sections := Output{}
 	output := bytes.Split([]byte(buffer.String()), []byte{'\n'})
 
-	outSection := OutSection{
-		titles: []string{},
-		body:   []string{},
+	currentSection := Section{
+		name:   UNKNOWN,
+		titles: []matchResult{},
+		body:   []matchResult{},
 	}
-
-	titlesClosed := false
+	sectionTitlesFinished := false
 	for _, line := range output {
+		if p.Failed {
+			break
+		}
+
 		str := string(line)
 		trimmed := strings.TrimSpace(str)
 
@@ -104,127 +139,108 @@ func (p *OutputParser) splitOutput(buffer bytes.Buffer) ([]OutSection, error) {
 		switch {
 		default:
 			p.Failed = true
-			fmt.Fprintf(&p.DebugOutput, "\tincorrect body line [%s]\n", str)
 		case len(reSectionTitleMatches) > 0:
-			if titlesClosed {
-				outSections = append(outSections, outSection)
-				outSection = OutSection{
-					titles: []string{},
-					body:   []string{},
-				}
-				titlesClosed = false
-			}
-			classes := p.classifyTitleLine(trimmed)
-			cnt := len(classes)
-			if cnt == 0 {
+			if sName, reName, matches, err := p.identifyTitleLine(trimmed); err != nil {
 				p.Failed = true
-				fmt.Fprintf(&p.DebugOutput, "\tsection's title not matched to any section [%s]\n", str)
-			} else if cnt == 1 {
-				outSection.titles = append(outSection.titles, trimmed)
-			} else if cnt > 1 {
-				outSection.titles = append(outSection.titles, trimmed)
+				fmt.Fprintf(&p.DebugOutput, "\tunmatched title line [%s]\n", str)
+			} else {
+				if sectionTitlesFinished {
+					if currentSection.name != UNKNOWN {
+						sections = append(sections, currentSection)
+						currentSection = Section{
+							titles: []matchResult{},
+							body:   []matchResult{},
+						}
+					}
+					currentSection.name = sName
+					currentSection.titles = append(currentSection.titles, matchResult{reName, matches})
+					continue
+				}
+				switch sName {
+				case UNKNOWN:
+					p.Failed = true
+					fmt.Fprintf(&p.DebugOutput, "\tunknown section title [%s]\n", str)
+				case currentSection.name: // exist section
+					currentSection.titles = append(currentSection.titles, matchResult{reName, matches})
+				default: // new section
+					if currentSection.name != UNKNOWN {
+						sections = append(sections, currentSection)
+						currentSection = Section{
+							titles: []matchResult{},
+							body:   []matchResult{},
+						}
+					}
+					currentSection.name = sName
+					currentSection.titles = append(currentSection.titles, matchResult{reName, matches})
+				}
 			}
-			// // new section start matched
-			// if len(sectionStrings) > 0 {
-			// 	outSections = append(outSections, sectionStrings)
-			// 	sectionStrings = []string{}
-			// }
-			// sectionStrings = append(sectionStrings, trimmed)
+		case len(reSectionBodyMatches) > 0:
+			if reName, matches, err := p.identifyBodyLine(currentSection.name, trimmed); err != nil {
+				p.Failed = true
+				fmt.Fprintf(&p.DebugOutput, "\tunmatched body line [%s]\n", str)
+			} else {
+				currentSection.body = append(currentSection.body, matchResult{reName, matches})
+			}
 		case trimmed == "":
-			titlesClosed = true
+			sectionTitlesFinished = true
 			continue // empty line skipped
 		case len(reSectionHintsMatches) > 0:
-			titlesClosed = true
+			sectionTitlesFinished = true
 			continue // hint line skipped
-		case len(reSectionBodyMatches) > 0:
-			outSection.body = append(outSection.body, trimmed)
 		}
 	}
-	if len(outSection.titles) > 0 || len(outSection.body) > 0 {
-		outSections = append(outSections, outSection)
+	if currentSection.name != UNKNOWN || len(currentSection.titles) > 0 || len(currentSection.body) > 0 {
+		sections = append(sections, currentSection)
 	}
 	if p.Failed {
-		//fmt.Fprintf(&p.DebugOutput, "\tsection [%s]\n", section)
-		return outSections, errors.New("split error")
+		return sections, errors.New("split error")
 	}
-	return outSections, nil
+	return sections, nil
 }
 
-func (p *OutputParser) classifyTitleLine(title string) []SectionName {
-	matchedSections := []SectionName{}
-	for _, name := range p.sectionsSeq {
-		sd := p.sections[name]
+func (p *OutputParser) identifyTitleLine(title string) (SectionName, string, []string, error) {
+	for _, section := range p.sectionsSeq {
+		sd := p.sections[section]
 		for _, re := range sd.reTitle {
 			if matches := re.re.FindStringSubmatch(title); len(matches) > 0 {
-				matchedSections = append(matchedSections, name)
+				return section, re.name, matches, nil
 			}
 		}
 	}
-	return matchedSections
+	fmt.Fprintf(os.Stderr, "ERR\n")
+	return UNKNOWN, "", nil, errors.New("not matched title line")
 }
 
-func (p *OutputParser) identifySection(titles []string) (SectionName, []string) {
-	matchedSection := UNKNOWN
-	for _, title := range titles {
-		for _, name := range p.sectionsSeq {
-			sd := p.sections[name]
-			matchingStarted := false
-			for _, re := range sd.reTitle {
-				if matches := re.re.FindStringSubmatch(title); len(matches) > 0 {
-					matchingStarted = true
-					matchedSection = name
-					return name, []string{}
-				}
-			}
-			if matchingStarted {
-
-			}
+func (p *OutputParser) identifyBodyLine(section SectionName, line string) (string, []string, error) {
+	sd := p.sections[section]
+	for _, re := range sd.reBody {
+		if matches := re.re.FindStringSubmatch(line); len(matches) > 0 {
+			return re.name, matches, nil
 		}
 	}
-	return matchedSection, []string{}
+	return "", nil, errors.New("not matched body line")
 }
 
-func (p *OutputParser) parseOutput(outputSections []OutSection, dscr *Descriptor) error {
-	for i, section := range outputSections {
-		sName, matches := p.identifySection(section.titles)
-		fmt.Fprintf(&p.DebugOutput, "[%02d] section: %s\n", i, sName)
-		if sName == UNKNOWN {
-			p.Failed = true
-			fmt.Fprintf(&p.DebugOutput, "\tunknown section: %s\n", section.titles)
-			continue
-		}
-		s := p.sections[sName]
-		s.handlerTitle(string(sName), matches, dscr)
-		for _, bodyLine := range section.body {
-			matched := false
-			if s.reBody == nil {
-				break
-			}
-			for _, re := range s.reBody {
-				if matches := re.re.FindStringSubmatch(bodyLine); len(matches) > 0 {
-					s.handlerBody(re.name, matches, dscr)
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				p.Failed = true
-				fmt.Fprintf(&p.DebugOutput, "\tincorrect body line [%s]\n", bodyLine)
+func (p *OutputParser) parseOutput(sections []Section, dscr *Descriptor) error {
+	for i, section := range sections {
+		fmt.Fprintf(&p.DebugOutput, "[%02d] section: %s\n", i, section.name)
+		sd := p.sections[section.name]
+		for _, title := range section.titles {
+			if err := sd.handlerTitle(section.name, title.reName, title.matches, dscr); err != nil {
+				fmt.Fprintf(&p.DebugOutput, "title handler error: %s\nrename=%s, matches=%s", err, title.reName, title.matches)
+				return errors.New("title handler error")
 			}
 		}
-		if p.Failed {
-			fmt.Fprintf(&p.DebugOutput, "     section titles:\n")
-			for _, l := range section.body {
-				fmt.Fprintf(&p.DebugOutput, "\t%s\n", l)
-			}
-			fmt.Fprintf(&p.DebugOutput, "     section body:\n")
-			for _, l := range section.body {
-				fmt.Fprintf(&p.DebugOutput, "\t%s\n", l)
+		for _, line := range section.body {
+			if err := sd.handlerBody(line.reName, line.matches, dscr); err != nil {
+				fmt.Fprintf(&p.DebugOutput, "body handler error: %s\nrename=%s, matches=%s", err, line.reName, line.matches)
+				return errors.New("title handler error")
 			}
 		}
 	}
 	return nil
 }
+
 func (p *OutputParser) Process(buffer bytes.Buffer, dscr *Descriptor) (*Descriptor, error) {
 	p.Failed = false
 	p.DebugOutput = bytes.Buffer{}
@@ -234,13 +250,12 @@ func (p *OutputParser) Process(buffer bytes.Buffer, dscr *Descriptor) (*Descript
 
 	out, err := p.splitOutput(buffer)
 	if err != nil {
-		fmt.Printf(p.DebugOutput.String())
-		panic(err)
+		return dscr, err
 	}
+
 	err = p.parseOutput(out, dscr)
 	if err != nil {
-		fmt.Printf(p.DebugOutput.String())
-		panic(err)
+		return dscr, err
 	}
 	p.DebugOutput.Write([]byte(">>>\n"))
 	return dscr, nil

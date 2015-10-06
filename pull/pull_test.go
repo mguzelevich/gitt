@@ -11,14 +11,12 @@ import (
 
 func TestPullStatus_1(t *testing.T) {
 	for i, fixture := range testGitPullFixtures {
-		break
 		buffer := bytes.Buffer{}
 		buffer.Write([]byte(fixture.input))
 
 		p := NewParser()
-		dscr := parser.NewDescriptor()
 
-		if dscr, err := p.Process(buffer, dscr); err != nil {
+		if dscr, err := p.Process(buffer, parser.NewDescriptor()); err != nil {
 			t.Error(
 				"For", i,
 				"expected", fixture.output,
@@ -29,7 +27,7 @@ func TestPullStatus_1(t *testing.T) {
 			t.Error(
 				"For", i,
 				"expected", fixture.output,
-				"got", err,
+				"got Failed status",
 				"output", p.DebugOutput.String(),
 			)
 		} else {
