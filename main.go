@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mguzelevich/gitt/git/pull"
+	"github.com/mguzelevich/gitt/git/status"
 	"github.com/mguzelevich/gitt/parser"
-	"github.com/mguzelevich/gitt/pull"
-	"github.com/mguzelevich/gitt/status"
 )
 
 type Action string

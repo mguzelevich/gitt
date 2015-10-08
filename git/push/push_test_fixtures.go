@@ -1,4 +1,4 @@
-package main
+package push
 
 var testGitPushFixtures = []string{
 	`Counting objects: 5, done.

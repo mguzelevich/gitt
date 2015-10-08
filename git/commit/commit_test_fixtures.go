@@ -1,4 +1,4 @@
-package main
+package commit
 
 var testGitCommitFixtures = []string{
 	`[master 6cd668e] comment
