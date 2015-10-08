@@ -144,8 +144,8 @@ func initGitStatusParser(p *parser.OutputParser) error {
 			case "renamed":
 				dscr.AppendItem(GST_TO_COMMIT_RENAMED,
 					git.FileData{
-						OldFilename: strings.TrimSpace(matches[1]),
-						Filename:    strings.TrimSpace(matches[2]),
+						OldFilename: matches[1],
+						Filename:    matches[2],
 						DiffPercent: 100,
 					})
 			case "deleted":
@@ -177,8 +177,8 @@ func initGitStatusParser(p *parser.OutputParser) error {
 			case "renamed":
 				dscr.AppendItem(GST_NOT_STAGED_RENAMED,
 					git.FileData{
-						OldFilename: strings.TrimSpace(matches[1]),
-						Filename:    strings.TrimSpace(matches[2]),
+						OldFilename: matches[1],
+						Filename:    matches[2],
 						DiffPercent: 100,
 					})
 			case "deleted":

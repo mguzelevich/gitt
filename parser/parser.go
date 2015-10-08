@@ -203,7 +203,7 @@ func (p *OutputParser) identifyTitleLine(title string) (SectionName, string, []s
 		sd := p.sections[section]
 		for _, re := range sd.reTitle {
 			if matches := re.re.FindStringSubmatch(title); len(matches) > 0 {
-				return section, re.name, matches, nil
+				return section, re.name, StripMatches(matches), nil
 			}
 		}
 	}
@@ -215,7 +215,7 @@ func (p *OutputParser) identifyBodyLine(section SectionName, line string) (strin
 	sd := p.sections[section]
 	for _, re := range sd.reBody {
 		if matches := re.re.FindStringSubmatch(line); len(matches) > 0 {
-			return re.name, matches, nil
+			return re.name, StripMatches(matches), nil
 		}
 	}
 	return "", nil, errors.New("not matched body line")

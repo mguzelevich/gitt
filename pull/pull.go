@@ -175,15 +175,15 @@ func initGitPullParser(p *parser.OutputParser) error {
 			parser.NewRE("new", `^\* \[new branch\] +(.+) +-> +(.+)$`),
 		},
 		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
-			dscr.SetString(GPULL_REPO_NAME, strings.TrimSpace(matches[1]))
+			dscr.SetString(GPULL_REPO_NAME, matches[1])
 			return nil
 		},
 		func(name string, matches []string, dscr *parser.Descriptor) error {
 			switch name {
 			case "existed":
-				dscr.AppendItem(GPULL_REPO_EXISTED_BRANCHES, git.BranchesLink{strings.TrimSpace(matches[1]), strings.TrimSpace(matches[2]), strings.TrimSpace(matches[3])})
+				dscr.AppendItem(GPULL_REPO_EXISTED_BRANCHES, git.BranchesLink{matches[1], matches[2], matches[3]})
 			case "new":
-				dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", strings.TrimSpace(matches[1]), strings.TrimSpace(matches[2])})
+				dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
 			default:
 				p.Failed = true
 			}
@@ -217,8 +217,8 @@ func initGitPullParser(p *parser.OutputParser) error {
 			var fdi interface{}
 			switch name {
 			case "changes_rename":
-				oldFilename := strings.TrimSpace(matches[1])
-				filename := strings.TrimSpace(matches[2])
+				oldFilename := matches[1]
+				filename := matches[2]
 				lines, _ := strconv.Atoi(matches[3])
 				added, deleted, err := git.ParseDiffLine(matches[4])
 				if err != nil {
@@ -237,7 +237,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
 			case "changes":
 				// printMatches(name, matches)
-				filename := strings.TrimSpace(matches[1])
+				filename := matches[1]
 				lines, _ := strconv.Atoi(matches[2])
 				added, deleted, err := git.ParseDiffLine(matches[3])
 				if err != nil {
@@ -277,7 +277,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 				dscr.SetField(GPULL_FF_SUMMARY_INSERTION, insertions)
 				dscr.SetField(GPULL_FF_SUMMARY_DELETION, deletions)
 			case "create":
-				filename := strings.TrimSpace(matches[2])
+				filename := matches[2]
 				mode, _ := strconv.Atoi(matches[1])
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
 					printMatches(name, matches)
@@ -289,8 +289,8 @@ func initGitPullParser(p *parser.OutputParser) error {
 				fd.Operation = "created"
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
 			case "rename":
-				oldFilename := strings.TrimSpace(matches[1])
-				filename := strings.TrimSpace(matches[2])
+				oldFilename := matches[1]
+				filename := matches[2]
 				diffPercent, _ := strconv.Atoi(matches[3])
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
 					printMatches(name, matches)
@@ -306,7 +306,7 @@ func initGitPullParser(p *parser.OutputParser) error {
 				fd.DiffPercent = diffPercent
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
 			case "delete":
-				filename := strings.TrimSpace(matches[2])
+				filename := matches[2]
 				mode, _ := strconv.Atoi(matches[1])
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
 					printMatches(name, matches)
