@@ -81,7 +81,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 				dscr.SetString(GST_PAIR_BRANCH, "<initial commit>")
 			case "ahead":
 				dscr.SetString(GST_PAIR_BRANCH, matches[1])
-				aheadCommits, _ := strconv.Atoi(matches[8])
+				aheadCommits, _ := strconv.Atoi(matches[3])
 				dscr.SetField(GST_AHEAD_COMMITS, aheadCommits)
 			case "up_to_date":
 				dscr.SetString(GST_PAIR_BRANCH, matches[1])

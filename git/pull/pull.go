@@ -43,6 +43,7 @@ const (
 	GSPULL_REMOTE             parser.SectionName = "GSPULL_COUNTING_OBJECTS"
 	GSPULL_UNTRACKING_OBJECTS parser.SectionName = "GSPULL_UNTRACKING_OBJECTS"
 	GSPULL_REPO               parser.SectionName = "GSPULL_REPO"
+	GSPULL_SUBMODULES         parser.SectionName = "GSPULL_SUBMODULES"
 	GSPULL_UPDATING           parser.SectionName = "GSPULL_UPDATING"
 	GSPULL_FAST_FORWARD       parser.SectionName = "GSPULL_FAST_FORWARD"
 	GSPULL_ALREADY_UP_TO_DATE parser.SectionName = "GSPULL_ALREADY_UP_TO_DATE"
@@ -171,8 +172,10 @@ func initGitPullParser(p *parser.OutputParser) error {
 			parser.NewRE("", `^From (.+)$`),
 		},
 		[]parser.OutLineRE{
-			parser.NewRE("existed", `^([0-9a-z]+\.\.[0-9a-z]+) +(.+) +-> +(.+)$`),
-			parser.NewRE("new", `^\* \[new branch\] +(.+) +-> +(.+)$`),
+			parser.NewRE("existed", `^([0-9a-z]+\.+[0-9a-z]+) +(.+) +-> +(.+)$`),
+			parser.NewRE("forced", `\+ ([0-9a-z]+\.+[0-9a-z]+) +(.+) +-> +(.+) +\(forced update\)$`),
+			parser.NewRE("new_branch", `^\* \[new branch\] +(.+) +-> +(.+)$`),
+			parser.NewRE("new_tag", `^\* \[new tag\] +(.+) +-> +(.+)$`),
 		},
 		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			dscr.SetString(GPULL_REPO_NAME, matches[1])
@@ -182,11 +185,46 @@ func initGitPullParser(p *parser.OutputParser) error {
 			switch name {
 			case "existed":
 				dscr.AppendItem(GPULL_REPO_EXISTED_BRANCHES, git.BranchesLink{matches[1], matches[2], matches[3]})
-			case "new":
+			case "forced":
+				dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
+			case "new_branch":
+				dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
+			case "new_tag":
 				dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
 			default:
 				p.Failed = true
 			}
+			return nil
+		})
+
+	p.RegSection(GSPULL_SUBMODULES,
+		[]parser.OutLineRE{
+			parser.NewRE("", `^Fetching submodule (.+)$`),
+			parser.NewRE("", `^From (.+)$`),
+		},
+		[]parser.OutLineRE{
+			parser.NewRE("existed", `^([0-9a-z]+\.+[0-9a-z]+) +(.+) +-> +(.+)$`),
+			parser.NewRE("forced", `\+ ([0-9a-z]+\.+[0-9a-z]+) +(.+) +-> +(.+) +\(forced update\)$`),
+			parser.NewRE("new_branch", `^\* \[new branch\] +(.+) +-> +(.+)$`),
+			parser.NewRE("new_tag", `^\* \[new tag\] +(.+) +-> +(.+)$`),
+		},
+		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
+			// dscr.SetString(GPULL_REPO_NAME, matches[1])
+			return nil
+		},
+		func(name string, matches []string, dscr *parser.Descriptor) error {
+			// switch name {
+			// case "existed":
+			// 	dscr.AppendItem(GPULL_REPO_EXISTED_BRANCHES, git.BranchesLink{matches[1], matches[2], matches[3]})
+			// case "forced":
+			// 	dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
+			// case "new_branch":
+			// 	dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
+			// case "new_tag":
+			// 	dscr.AppendItem(GPULL_REPO_NEW_BRANCHES, git.BranchesLink{"", matches[1], matches[2]})
+			// default:
+			// 	p.Failed = true
+			// }
 			return nil
 		})
 
@@ -206,9 +244,11 @@ func initGitPullParser(p *parser.OutputParser) error {
 		},
 		[]parser.OutLineRE{
 			parser.NewRE("changes_rename", `^(.+) => (.+) +\| +([0-9]+) ([\+\-]+)$`),
+			parser.NewRE("changes_bin", `^(.+) +\| +Bin ([0-9]+) -> ([0-9]+) byte[s]*$`),
 			parser.NewRE("changes", `^(.+) +\| +([0-9]+)( [\+\-]+)*$`),
 			parser.NewRE("summary", `^([0-9]+) file[s]* changed(, ([0-9]+) ((insertion[s]*)|(deletion[s]*))\([\+\-]\))(, ([0-9]+) ((insertion[s]*)|(deletion[s]*))\([\+\-]\))*$`),
 			parser.NewRE("create", `^create mode ([0-9]+) (.+)`),
+			parser.NewRE("rename_dir", `^rename (.+\/)*{(.+) => (.+)}(\/.+) \(([0-9]+)%\)`),
 			parser.NewRE("rename", `^rename (.+) => (.+) \(([0-9]+)%\)`),
 			parser.NewRE("delete", `^delete mode ([0-9]+) (.+)`),
 		}, parser.DummyTitleHandler,
@@ -235,9 +275,25 @@ func initGitPullParser(p *parser.OutputParser) error {
 					LinesDeleted: deleted,
 				}
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
+			case "changes_bin":
+				filename := matches[1]
+				before, _ := strconv.Atoi(matches[2])
+				after, _ := strconv.Atoi(matches[3])
+				fd := git.FileData{
+					Operation:    "",
+					Filename:     filename,
+					LinesAdded:   before,
+					LinesDeleted: after,
+				}
+				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
 			case "changes":
 				// printMatches(name, matches)
 				filename := matches[1]
+				// if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi != nil {
+				// 	printMatches(name, matches)
+				// 	p.Failed = true
+				// 	return errors.New("file duplicate find")
+				// }
 				lines, _ := strconv.Atoi(matches[2])
 				added, deleted, err := git.ParseDiffLine(matches[3])
 				if err != nil {
@@ -280,13 +336,45 @@ func initGitPullParser(p *parser.OutputParser) error {
 				filename := matches[2]
 				mode, _ := strconv.Atoi(matches[1])
 				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
+					for k, tfdi := range dscr.GetField(GPULL_FILES_TMP).(map[string]interface{}) {
+						if k[:3] == "..." && strings.HasSuffix(filename, k[3:]) {
+							fdi = tfdi
+							fd := fdi.(git.FileData)
+							fd.Filename = filename
+							dscr.SetMapItem(GPULL_FILES_TMP, k, fd)
+							break
+						}
+					}
+					if fdi == nil {
+						printMatches(name, matches)
+						p.Failed = true
+						return errors.New("file not find")
+					}
+				}
+				fd := fdi.(git.FileData)
+				fd.Mode = mode
+				fd.Operation = "created"
+				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
+			case "rename_dir":
+				oldFilename := matches[1] + matches[2] + matches[4]
+				filename := matches[1] + matches[3] + matches[4]
+				diffPercent, _ := strconv.Atoi(matches[5])
+				fmt.Println("v", oldFilename)
+				fmt.Println("v", filename)
+				if fdi = dscr.GetMapItem(GPULL_FILES_TMP, filename); fdi == nil {
+					fmt.Println("f", filename)
 					printMatches(name, matches)
 					p.Failed = true
 					return errors.New("file not find")
 				}
 				fd := fdi.(git.FileData)
-				fd.Mode = mode
-				fd.Operation = "created"
+				if oldFilename != fd.OldFilename && fd.Operation != "renamed" {
+					fmt.Println("f", filename)
+					printMatches(name, matches)
+					p.Failed = true
+					return errors.New("file not find")
+				}
+				fd.DiffPercent = diffPercent
 				dscr.SetMapItem(GPULL_FILES_TMP, filename, fd)
 			case "rename":
 				oldFilename := matches[1]
