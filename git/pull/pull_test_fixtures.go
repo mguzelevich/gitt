@@ -148,6 +148,14 @@ changes:
 	* main.go 9*=1+/8-
 	- c.go 29*=0+/29- (100644)
 `},
+	gitOutputTest{`From github.com:mguzelevich/gitt
+   6057368..76ec6d6  master     -> origin/master
+Auto-merging a/a.yaml
+Merge made by the 'recursive' strategy.
+ a/a.yaml | 3 ++-
+ main.go  | 6 ++++--
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+`, ``},
 	gitOutputTest{`remote: Counting objects: 22, done.
 remote: Compressing objects: 100% (21/21), done.
 remote: Total 22 (delta 12), reused 0 (delta 0)

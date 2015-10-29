@@ -28,16 +28,32 @@ gb build
 
 # Examples
 
+```
+$GOPATH/bin/gitt [--root=<root path>] [-h] [-v] [command] [args]
+```
+
 run `git pull` for all repositories
 
+full:
 ```
-$GOPATH/bin/gitt -git pull .
+$GOPATH/bin/gitt --root=. pull
+```
+
+short:
+```
+$GOPATH/bin/gitt pull
 ```
 
 run `git status` for all repositories
 
+full:
 ```
-$GOPATH/bin/gitt -git status .
+$GOPATH/bin/gitt --root=./src/bla-bla-bla status
+```
+
+short:
+```
+$GOPATH/bin/gitt status
 ```
 
 # output legend

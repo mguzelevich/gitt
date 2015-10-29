@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"flag"
+	//	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,7 +38,7 @@ func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputParser) {
+func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputParser) error {
 	cmd := exec.Command(gitbinary, cmdString)
 	cmd.Dir = path
 
@@ -48,8 +48,8 @@ func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputPar
 	cmd.Stderr = &out // os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR [%s]\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "ERROR [%s][%s]\n", err, out)
+		return err
 	}
 
 	dscr, err := p.Process(out, parser.NewDescriptor())
@@ -74,6 +74,7 @@ func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputPar
 		// fmt.Printf(status.DebugOutput.String())
 	}
 	//fmt.Println("\n")
+	return nil
 }
 
 func walker(root string, action Action) {
@@ -108,7 +109,9 @@ func actionApplier(dirs []string, action Action) {
 	}
 
 	for _, d := range dirs {
-		gitCmd(d, gitbinary, cmd, p)
+		if err := gitCmd(d, gitbinary, cmd, p); err != nil {
+			fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+		}
 	}
 }
 
@@ -124,22 +127,47 @@ func init() {
 }
 
 func main() {
-	//debug := flag.Bool("debug", false, "debug mode")
-	git := flag.String("git", "status", "git action")
-	flag.Parse()
+	flags := map[string]interface{}{
+		"root":  ".",
+		"debug": false,
+	}
+	command := ""
+	args := []string{}
 
-	root := flag.Arg(0)
-	if root == "" {
-		root = "."
+	for _, v := range os.Args[1:] {
+		if command != "" {
+			args = append(args, v)
+		} else {
+			if v[0] == '-' {
+				parts := strings.SplitN(v, "=", -1)
+				if len(parts) > 2 {
+					fmt.Fprintf(os.Stderr, "flags parsing error [%s]\n", parts)
+					return
+				}
+				switch parts[0] {
+				default:
+					fmt.Fprintf(os.Stderr, "unknown flag [%s]\n", parts)
+				case "--root":
+					flags["root"] = parts[1]
+				case "--debug":
+					flags["debug"] = true
+				}
+			} else {
+				command = v
+			}
+		}
 	}
 
 	switch {
-	// case *debug:
-	// 	fmt.Fprintf(os.Stderr, "debug mode")
-	case *git != "":
-		action := Action(*git)
+	case flags["debug"]:
+		fmt.Fprintf(os.Stderr, "debug mode")
+		fmt.Fprintf(os.Stderr, "flags [%s]\n", flags)
+		fmt.Fprintf(os.Stderr, "command [%s]\n", command)
+		fmt.Fprintf(os.Stderr, "args [%s]\n", args)
+	case command != "":
+		action := Action(command)
 		fmt.Fprintf(os.Stderr, "started in [git %s] mode\n\n", action)
-		walk(root, action)
+		walk(flags["root"].(string), action)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown mode")
 	}
