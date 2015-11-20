@@ -2,23 +2,29 @@ package main
 
 import (
 	"bytes"
-	//	"flag"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/mguzelevich/gitt/parser"
+
+	"github.com/mguzelevich/gitt/git/checkout"
+	"github.com/mguzelevich/gitt/git/diff"
 	"github.com/mguzelevich/gitt/git/pull"
 	"github.com/mguzelevich/gitt/git/status"
-	"github.com/mguzelevich/gitt/parser"
 )
 
 type Action string
 
 const (
-	GIT_PULL   Action = "pull"
-	GIT_STATUS Action = "status"
+	GIT_CHECKOUT Action = "checkout"
+	GIT_DIFF     Action = "diff"
+	GIT_PULL     Action = "pull"
+	GIT_STATUS   Action = "status"
 )
 
 var dirs = []string{}
@@ -38,7 +44,7 @@ func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputParser) error {
+func gitCmd(idx int, path string, gitbinary string, cmdString string, p *parser.OutputParser) error {
 	cmd := exec.Command(gitbinary, cmdString)
 	cmd.Dir = path
 
@@ -69,7 +75,7 @@ func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputPar
 		fmt.Fprintf(os.Stderr, "DBG:\n%s\n", p.DebugOutput.String())
 		fmt.Fprintf(os.Stderr, "</ERROR>\n")
 	} else {
-		fmt.Fprintf(os.Stderr, "=== %s %s", path, dscr.AsString(dscr, true))
+		fmt.Fprintf(os.Stderr, "= %02d = %s %s", idx, path, dscr.AsString(dscr, true))
 		// fmt.Printf("%s", out.String())
 		// fmt.Printf(status.DebugOutput.String())
 	}
@@ -77,23 +83,7 @@ func gitCmd(path string, gitbinary string, cmdString string, p *parser.OutputPar
 	return nil
 }
 
-func walker(root string, action Action) {
-	var f filepath.WalkFunc
-
-	switch action {
-	case GIT_PULL:
-		f = walkerGetGitRepo
-	case GIT_STATUS:
-		f = walkerGetGitRepo
-	default:
-		fmt.Fprintf(os.Stderr, "unknown [%s] mode", action)
-	}
-
-	err := filepath.Walk(root, f)
-	checkError(err)
-}
-
-func actionApplier(dirs []string, action Action) {
+func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 	var cmd string
 	var p *parser.OutputParser
 
@@ -104,20 +94,37 @@ func actionApplier(dirs []string, action Action) {
 	case GIT_STATUS:
 		cmd = "status"
 		p = status.NewParser()
+	case GIT_DIFF:
+		cmd = "diff"
+		p = diff.NewParser()
+	case GIT_CHECKOUT:
+		cmd = "checkout"
+		p = checkout.NewParser()
 	default:
-		fmt.Fprintf(os.Stderr, "unknown [%s] mode", action)
+		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
 
-	for _, d := range dirs {
-		if err := gitCmd(d, gitbinary, cmd, p); err != nil {
-			fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+	for i, d := range dirs {
+		idx := i + 1
+		l := len(repos)
+		process := repos[idx]
+		if l == 0 || process {
+			if err := gitCmd(idx, d, gitbinary, cmd, p); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+			}
 		}
 	}
+	return nil
 }
 
-func walk(root string, action Action) {
-	walker(root, action)
-	actionApplier(dirs, action)
+func walk(root string, repos map[int]bool, action Action) error {
+	if err := filepath.Walk(root, walkerGetGitRepo); err != nil {
+		return err
+	}
+	if err := actionApplier(dirs, repos, action); err != nil {
+		return err
+	}
+	return nil
 }
 
 func init() {
@@ -134,6 +141,8 @@ func main() {
 	command := ""
 	args := []string{}
 
+	repos := map[int]bool{}
+
 	for _, v := range os.Args[1:] {
 		if command != "" {
 			args = append(args, v)
@@ -147,6 +156,11 @@ func main() {
 				switch parts[0] {
 				default:
 					fmt.Fprintf(os.Stderr, "unknown flag [%s]\n", parts)
+				case "-r":
+					for _, r := range strings.SplitN(parts[1], ",", -1) {
+						val, _ := strconv.Atoi(r)
+						repos[val] = true
+					}
 				case "--root":
 					flags["root"] = parts[1]
 				case "--debug":
@@ -166,9 +180,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "args [%s]\n", args)
 	case command != "":
 		action := Action(command)
-		fmt.Fprintf(os.Stderr, "started in [git %s] mode\n\n", action)
-		walk(flags["root"].(string), action)
+		// fmt.Fprintf(os.Stderr, "started in [git %s] mode\n", action)
+		if err := walk(flags["root"].(string), repos, action); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown mode")
+		fmt.Fprintf(os.Stderr, "ERROR: unknown mode")
 	}
 }
