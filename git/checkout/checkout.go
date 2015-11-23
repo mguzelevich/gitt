@@ -10,22 +10,42 @@ import (
 )
 
 const (
-	GSPUSH_UP_TO_DATE parser.SectionName = "GSPUSH_UP_TO_DATE"
+	GST_BRANCH      parser.FieldName = "GST_BRANCH"      // string
+	GST_PAIR_BRANCH parser.FieldName = "GST_PAIR_BRANCH" // string
+)
+
+const (
+	GSCHEKOUT_HEAD parser.SectionName = "GSCHEKOUT_HEAD"
 )
 
 func initGitStatusDscr(dscr *parser.Descriptor) error {
 	dscr.AsString = gitStatusAsString
+
+	dscr.AddField(GST_BRANCH, "")
+	dscr.AddField(GST_PAIR_BRANCH, "")
+
 	return nil
 }
 
 func initGitStatusParser(p *parser.OutputParser) error {
 
-	p.RegSection(GSPUSH_UP_TO_DATE,
+	p.RegSection(GSCHEKOUT_HEAD,
 		[]parser.OutLineRE{
-			parser.NewRE("", `^Everything up-to-date$`),
+			parser.NewRE("already", `^Already on '(.+)'$`),
+			parser.NewRE("switched", `^Switched to branch '(.+)'$`),
+			parser.NewRE("up-to-date", `^Your branch is up-to-date with '(.+)'.`),
 		}, nil,
 		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
-			// dscr.SetString(GPULL_REPO_NAME, matches[1])
+			switch name {
+			case "already":
+				dscr.SetString(GST_BRANCH, matches[1])
+			case "switched":
+				dscr.SetString(GST_BRANCH, matches[1])
+			case "up-to-date":
+				dscr.SetString(GST_PAIR_BRANCH, matches[1])
+			default:
+				p.Failed = true
+			}
 			return nil
 		},
 		parser.DummyHandler)
@@ -34,7 +54,19 @@ func initGitStatusParser(p *parser.OutputParser) error {
 
 func gitStatusAsString(dscr *parser.Descriptor, useAnsiColors bool) string {
 	output := bytes.Buffer{}
-	fmt.Fprintf(&output, "[OK]")
+	fmt.Fprintf(&output, "[")
+
+	branch := dscr.GetString(GST_BRANCH)
+	pairBranch := dscr.GetString(GST_PAIR_BRANCH)
+	if branch != "master" {
+		dscr.AddToOut(&output, branch, parser.AnsiColor("yellow", useAnsiColors))
+	} else {
+		fmt.Fprintf(&output, "%s", branch)
+	}
+
+	fmt.Fprintf(&output, "] == [%s", pairBranch)
+	fmt.Fprintf(&output, "]\n")
+
 	return output.String()
 }
 
