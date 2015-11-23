@@ -15,17 +15,22 @@ import (
 	"github.com/mguzelevich/gitt/git/checkout"
 	"github.com/mguzelevich/gitt/git/diff"
 	"github.com/mguzelevich/gitt/git/pull"
+	"github.com/mguzelevich/gitt/git/push"
+	"github.com/mguzelevich/gitt/git/rebase"
 	"github.com/mguzelevich/gitt/git/status"
 )
 
-type Action string
+type Action struct {
+	Cmd  string
+	Args []string
+}
 
-const (
-	GIT_CHECKOUT Action = "checkout"
-	GIT_DIFF     Action = "diff"
-	GIT_PULL     Action = "pull"
-	GIT_STATUS   Action = "status"
-)
+var GIT_CHECKOUT = Action{Cmd: "checkout"}
+var GIT_DIFF = Action{Cmd: "diff"}
+var GIT_PULL = Action{Cmd: "pull"}
+var GIT_PUSH = Action{Cmd: "push"}
+var GIT_REBASE = Action{Cmd: "rebase"}
+var GIT_STATUS = Action{Cmd: "status"}
 
 var dirs = []string{}
 var gitbinary string
@@ -44,14 +49,21 @@ func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func gitCmd(idx int, path string, gitbinary string, cmdString string, p *parser.OutputParser) error {
-	cmd := exec.Command(gitbinary, cmdString)
-	cmd.Dir = path
+func gitCmd(idx int, path string, gitbinary string, action Action, p *parser.OutputParser) error {
+	var out bytes.Buffer
+
+	args := []string{gitbinary, action.Cmd}
+	args = append(args, action.Args...)
+
+	cmd := exec.Cmd{
+		Dir:    path,
+		Path:   gitbinary,
+		Args:   args,
+		Stdout: &out,
+		Stderr: &out,
+	}
 
 	//cmd.Stdin = strings.NewReader("some input")
-	var out bytes.Buffer
-	cmd.Stdout = &out // os.Stdout
-	cmd.Stderr = &out // os.Stderr
 
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR [%s][%s]\n", err, out)
@@ -84,22 +96,21 @@ func gitCmd(idx int, path string, gitbinary string, cmdString string, p *parser.
 }
 
 func actionApplier(dirs []string, repos map[int]bool, action Action) error {
-	var cmd string
 	var p *parser.OutputParser
 
-	switch action {
-	case GIT_PULL:
-		cmd = "pull"
+	switch action.Cmd {
+	case GIT_PULL.Cmd:
 		p = pull.NewParser()
-	case GIT_STATUS:
-		cmd = "status"
+	case GIT_STATUS.Cmd:
 		p = status.NewParser()
-	case GIT_DIFF:
-		cmd = "diff"
+	case GIT_REBASE.Cmd:
+		p = rebase.NewParser()
+	case GIT_DIFF.Cmd:
 		p = diff.NewParser()
-	case GIT_CHECKOUT:
-		cmd = "checkout"
+	case GIT_CHECKOUT.Cmd:
 		p = checkout.NewParser()
+	case GIT_PUSH.Cmd:
+		p = push.NewParser()
 	default:
 		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
@@ -109,7 +120,7 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		l := len(repos)
 		process := repos[idx]
 		if l == 0 || process {
-			if err := gitCmd(idx, d, gitbinary, cmd, p); err != nil {
+			if err := gitCmd(idx, d, gitbinary, action, p); err != nil {
 				fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
 			}
 		}
@@ -179,7 +190,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "command [%s]\n", command)
 		fmt.Fprintf(os.Stderr, "args [%s]\n", args)
 	case command != "":
-		action := Action(command)
+		action := Action{Cmd: command, Args: args}
 		// fmt.Fprintf(os.Stderr, "started in [git %s] mode\n", action)
 		if err := walk(flags["root"].(string), repos, action); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
