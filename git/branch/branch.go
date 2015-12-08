@@ -10,39 +10,32 @@ import (
 )
 
 const (
-	GST_BRANCH      parser.FieldName = "GST_BRANCH"      // string
-	GST_PAIR_BRANCH parser.FieldName = "GST_PAIR_BRANCH" // string
+	GST_BRANCH parser.FieldName = "GST_BRANCH" // string
 )
 
 const (
-	GSCHEKOUT_HEAD parser.SectionName = "GSCHEKOUT_HEAD"
+	GSBRANCH_HEAD parser.SectionName = "GSBRANCH_HEAD"
 )
 
 func initGitBranchDscr(dscr *parser.Descriptor) error {
 	dscr.AsString = gitStatusAsString
 
 	dscr.AddField(GST_BRANCH, "")
-	dscr.AddField(GST_PAIR_BRANCH, "")
 
 	return nil
 }
 
 func initGitBranchParser(p *parser.OutputParser) error {
 
-	p.RegSection(GSCHEKOUT_HEAD,
+	p.RegSection(GSBRANCH_HEAD,
 		[]parser.OutLineRE{
-			parser.NewRE("already", `^Already on '(.+)'$`),
-			parser.NewRE("switched", `^Switched to branch '(.+)'$`),
-			parser.NewRE("up-to-date", `^Your branch is up-to-date with '(.+)'.`),
+			parser.NewRE("deleted", `^Deleted branch (.+) \(was (.+)\).$`),
 		}, nil,
 		func(sectionName parser.SectionName, name string, matches []string, dscr *parser.Descriptor) error {
 			switch name {
-			case "already":
+			case "deleted":
 				dscr.SetString(GST_BRANCH, matches[1])
-			case "switched":
-				dscr.SetString(GST_BRANCH, matches[1])
-			case "up-to-date":
-				dscr.SetString(GST_PAIR_BRANCH, matches[1])
+				//dscr.SetString(GST_BRANCH, matches[2])
 			default:
 				p.Failed = true
 			}
@@ -57,14 +50,12 @@ func gitStatusAsString(dscr *parser.Descriptor, useAnsiColors bool) string {
 	fmt.Fprintf(&output, "[")
 
 	branch := dscr.GetString(GST_BRANCH)
-	pairBranch := dscr.GetString(GST_PAIR_BRANCH)
 	if branch != "master" {
 		dscr.AddToOut(&output, branch, parser.AnsiColor("yellow", useAnsiColors))
 	} else {
 		fmt.Fprintf(&output, "%s", branch)
 	}
 
-	fmt.Fprintf(&output, "] == [%s", pairBranch)
 	fmt.Fprintf(&output, "]\n")
 
 	return output.String()
