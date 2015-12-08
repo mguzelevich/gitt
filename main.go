@@ -12,6 +12,7 @@ import (
 
 	"github.com/mguzelevich/gitt/parser"
 
+	"github.com/mguzelevich/gitt/git/branch"
 	"github.com/mguzelevich/gitt/git/checkout"
 	"github.com/mguzelevich/gitt/git/diff"
 	"github.com/mguzelevich/gitt/git/pull"
@@ -31,6 +32,7 @@ var GIT_PULL = Action{Cmd: "pull"}
 var GIT_PUSH = Action{Cmd: "push"}
 var GIT_REBASE = Action{Cmd: "rebase"}
 var GIT_STATUS = Action{Cmd: "status"}
+var GIT_BRANCH = Action{Cmd: "branch"}
 
 var dirs = []string{}
 var gitbinary string
@@ -111,6 +113,8 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		p = checkout.NewParser()
 	case GIT_PUSH.Cmd:
 		p = push.NewParser()
+	case GIT_BRANCH.Cmd:
+		p = branch.NewParser()
 	default:
 		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
