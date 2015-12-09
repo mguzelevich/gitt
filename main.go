@@ -177,8 +177,19 @@ func main() {
 					fmt.Fprintf(os.Stderr, "unknown flag [%s]\n", parts)
 				case "-r":
 					for _, r := range strings.SplitN(parts[1], ",", -1) {
-						val, _ := strconv.Atoi(r)
-						repos[val] = true
+						if rr := strings.SplitN(r, "-", -1); len(rr) > 1 {
+							start, _ := strconv.Atoi(rr[0])
+							finish, _ := strconv.Atoi(rr[1])
+							if finish <= start {
+								continue
+							}
+							for i := start; i <= finish; i++ {
+								repos[i] = true
+							}
+						} else {
+							val, _ := strconv.Atoi(r)
+							repos[val] = true
+						}
 					}
 				case "--root":
 					flags["root"] = parts[1]
