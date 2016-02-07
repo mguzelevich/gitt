@@ -16,6 +16,7 @@ import (
 	"github.com/mguzelevich/gitt/git/checkout"
 	"github.com/mguzelevich/gitt/git/commit"
 	"github.com/mguzelevich/gitt/git/diff"
+	"github.com/mguzelevich/gitt/git/fetch"
 	"github.com/mguzelevich/gitt/git/pull"
 	"github.com/mguzelevich/gitt/git/push"
 	"github.com/mguzelevich/gitt/git/rebase"
@@ -31,6 +32,7 @@ var GIT_CHECKOUT = Action{Cmd: "checkout"}
 var GIT_DIFF = Action{Cmd: "diff"}
 var GIT_PULL = Action{Cmd: "pull"}
 var GIT_PUSH = Action{Cmd: "push"}
+var GIT_FETCH = Action{Cmd: "fetch"}
 var GIT_REBASE = Action{Cmd: "rebase"}
 var GIT_STATUS = Action{Cmd: "status"}
 var GIT_BRANCH = Action{Cmd: "branch"}
@@ -115,6 +117,8 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		p = checkout.NewParser()
 	case GIT_PUSH.Cmd:
 		p = push.NewParser()
+	case GIT_FETCH.Cmd:
+		p = fetch.NewParser()
 	case GIT_BRANCH.Cmd:
 		p = branch.NewParser()
 	case GIT_COMMIT.Cmd:
