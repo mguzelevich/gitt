@@ -1,45 +1,84 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/mguzelevich/gitt/parser"
+	"github.com/libgit2/git2go"
+	// "github.com/mguzelevich/gitt/git/branch"
+	// "github.com/mguzelevich/gitt/git/checkout"
+	// "github.com/mguzelevich/gitt/git/commit"
+	// "github.com/mguzelevich/gitt/git/diff"
+	// "github.com/mguzelevich/gitt/git/fetch"
+	// "github.com/mguzelevich/gitt/git/pull"
+	// "github.com/mguzelevich/gitt/git/push"
+	// "github.com/mguzelevich/gitt/git/rebase"
 
-	"github.com/mguzelevich/gitt/git/branch"
-	"github.com/mguzelevich/gitt/git/checkout"
-	"github.com/mguzelevich/gitt/git/commit"
-	"github.com/mguzelevich/gitt/git/diff"
-	"github.com/mguzelevich/gitt/git/fetch"
-	"github.com/mguzelevich/gitt/git/pull"
-	"github.com/mguzelevich/gitt/git/push"
-	"github.com/mguzelevich/gitt/git/rebase"
-	"github.com/mguzelevich/gitt/git/status"
+	"github.com/mguzelevich/gitt/actions"
 )
 
-type Action struct {
-	Cmd  string
-	Args []string
+var repos Repos
+
+type Repo struct {
+	repo    *git.Repository
+	path    string
+	exclude bool
 }
 
-var GIT_CHECKOUT = Action{Cmd: "checkout"}
-var GIT_DIFF = Action{Cmd: "diff"}
-var GIT_PULL = Action{Cmd: "pull"}
-var GIT_PUSH = Action{Cmd: "push"}
-var GIT_FETCH = Action{Cmd: "fetch"}
-var GIT_REBASE = Action{Cmd: "rebase"}
-var GIT_STATUS = Action{Cmd: "status"}
-var GIT_BRANCH = Action{Cmd: "branch"}
-var GIT_COMMIT = Action{Cmd: "commit"}
+func (r *Repo) String() string {
+	return fmt.Sprintf("%s %s", r.exclude, r.path)
+}
 
-var dirs = []string{}
-var gitbinary string
+type Repos struct {
+	repos   []Repo
+	process map[int]bool
+}
+
+func (repos *Repos) walker(path string, f os.FileInfo, err error) error {
+	if f.IsDir() {
+		if r, err := git.OpenRepository(path); err != nil {
+			// fmt.Printf("path != repo: %s skipped %s\n", path, err)
+		} else {
+			// fmt.Printf("repo: %s (%s)\n", path, r)
+			repos.repos = append(repos.repos, Repo{repo: r, path: path, exclude: false})
+			return filepath.SkipDir
+		}
+	}
+	return nil
+}
+
+func (repos *Repos) walk(root string) error {
+	if err := filepath.Walk(root, repos.walker); err != nil {
+		return err
+	}
+	for i, _ := range repos.repos {
+		idx := i + 1
+		process := repos.process[idx]
+		repos.repos[i].exclude = !(len(repos.process) == 0 || process)
+	}
+	return nil
+}
+
+func (repos *Repos) output() error {
+	for i, r := range repos.repos {
+		idx := i + 1
+		fmt.Printf("%05d: %v\n", idx, r)
+	}
+	return nil
+}
+
+func (repos *Repos) handle(action actions.Action) error {
+	for i := range repos.repos {
+		r := repos.repos[i]
+		if !r.exclude {
+			action.Handle(r.path)
+		}
+	}
+	return nil
+}
 
 func checkError(err error) {
 	if err != nil {
@@ -47,113 +86,16 @@ func checkError(err error) {
 	}
 }
 
-func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
-	if f.IsDir() && filepath.Base(path) == ".git" {
-		dirs = append(dirs, path[:strings.LastIndex(path, "/")])
-		return filepath.SkipDir
-	}
-	return nil
-}
-
-func gitCmd(idx int, path string, gitbinary string, action Action, p *parser.OutputParser) error {
-	var out bytes.Buffer
-
-	args := []string{gitbinary, action.Cmd}
-	args = append(args, action.Args...)
-
-	cmd := exec.Cmd{
-		Dir:    path,
-		Path:   gitbinary,
-		Args:   args,
-		Stdout: &out,
-		Stderr: &out,
-	}
-
-	//cmd.Stdin = strings.NewReader("some input")
-
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR [%s][%s]\n", err, out)
-		return err
-	}
-
-	dscr, err := p.Process(out, parser.NewDescriptor())
-	//fmt.Fprintf(os.Stderr, "!!! [%s]\n", p.DebugOutput.String())
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "\n<ERROR parser process>\n", path)
-		fmt.Fprintf(os.Stderr, "=== %s ===\n", path)
-		fmt.Fprintf(os.Stderr, "OUT:\n%s\n", out.String())
-		fmt.Fprintf(os.Stderr, "ERR:\n%s\n", err.Error())
-		fmt.Fprintf(os.Stderr, "DBG:\n%s\n", p.DebugOutput.String())
-		fmt.Fprintf(os.Stderr, "</ERROR>\n")
-	} else if p.Failed {
-		fmt.Fprintf(os.Stderr, "\n<ERROR parser failed>\n", path)
-		fmt.Fprintf(os.Stderr, "=== %s ===\n", path)
-		fmt.Fprintf(os.Stderr, "OUT:\n%s\n", out.String())
-		fmt.Fprintf(os.Stderr, "DBG:\n%s\n", p.DebugOutput.String())
-		fmt.Fprintf(os.Stderr, "</ERROR>\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "= %02d = %s %s", idx, path, dscr.AsString(dscr, true))
-		// fmt.Printf("%s", out.String())
-		// fmt.Printf(status.DebugOutput.String())
-	}
-	//fmt.Println("\n")
-	return nil
-}
-
-func actionApplier(dirs []string, repos map[int]bool, action Action) error {
-	var p *parser.OutputParser
-
-	switch action.Cmd {
-	case GIT_PULL.Cmd:
-		p = pull.NewParser()
-	case GIT_STATUS.Cmd:
-		p = status.NewParser()
-	case GIT_REBASE.Cmd:
-		p = rebase.NewParser()
-	case GIT_DIFF.Cmd:
-		p = diff.NewParser()
-	case GIT_CHECKOUT.Cmd:
-		p = checkout.NewParser()
-	case GIT_PUSH.Cmd:
-		p = push.NewParser()
-	case GIT_FETCH.Cmd:
-		p = fetch.NewParser()
-	case GIT_BRANCH.Cmd:
-		p = branch.NewParser()
-	case GIT_COMMIT.Cmd:
-		p = commit.NewParser()
-	default:
-		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
-	}
-
-	for i, d := range dirs {
-		idx := i + 1
-		l := len(repos)
-		process := repos[idx]
-		if l == 0 || process {
-			if err := gitCmd(idx, d, gitbinary, action, p); err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
-			}
-		}
-	}
-	return nil
-}
-
-func walk(root string, repos map[int]bool, action Action) error {
-	if err := filepath.Walk(root, walkerGetGitRepo); err != nil {
-		return err
-	}
-	if err := actionApplier(dirs, repos, action); err != nil {
-		return err
-	}
-	return nil
-}
+// func walk(root string, repos map[int]bool) error {
+// 	d := Dirs{}
+// 	if err := filepath.Walk(root, d.walk); err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func init() {
-	gb, err := exec.LookPath("git")
-	checkError(err)
-	gitbinary = gb
+	repos = Repos{repos: []Repo{}, process: map[int]bool{}}
 }
 
 func main() {
@@ -163,8 +105,6 @@ func main() {
 	}
 	command := ""
 	args := []string{}
-
-	repos := map[int]bool{}
 
 	for _, v := range os.Args[1:] {
 		if command != "" {
@@ -188,11 +128,11 @@ func main() {
 								continue
 							}
 							for i := start; i <= finish; i++ {
-								repos[i] = true
+								repos.process[i] = true
 							}
 						} else {
 							val, _ := strconv.Atoi(r)
-							repos[val] = true
+							repos.process[val] = true
 						}
 					}
 				case "--root":
@@ -206,19 +146,38 @@ func main() {
 		}
 	}
 
+	if !actions.Check(command) {
+		panic("unknown command")
+	}
+
 	switch {
 	case flags["debug"]:
 		fmt.Fprintf(os.Stderr, "debug mode")
-		fmt.Fprintf(os.Stderr, "flags [%s]\n", flags)
-		fmt.Fprintf(os.Stderr, "command [%s]\n", command)
-		fmt.Fprintf(os.Stderr, "args [%s]\n", args)
+		// fmt.Fprintf(os.Stderr, "flags [%s]\n", flags)
+		// fmt.Fprintf(os.Stderr, "command [%s]\n", command)
+		// fmt.Fprintf(os.Stderr, "args [%s]\n", args)
 	case command != "":
-		action := Action{Cmd: command, Args: args}
-		// fmt.Fprintf(os.Stderr, "started in [git %s] mode\n", action)
-		if err := walk(flags["root"].(string), repos, action); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
-		}
+		// 	action := Action{Cmd: command, Args: args}
+		// 	// fmt.Fprintf(os.Stderr, "started in [git %s] mode\n", action)
 	default:
 		fmt.Fprintf(os.Stderr, "ERROR: unknown mode")
 	}
+
+	if err := repos.walk(flags["root"].(string)); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+	} else {
+		// repos.output()
+		if action, err := actions.Get(command); err == nil {
+			//panic("unknown")
+			repos.handle(action)
+		}
+
+	}
+
+	// repo, err := git.Clone("https://github.com/mguzelevich/gitt.git", "/tmp/gitt-tmp", &git.CloneOptions{})
+	// if err != nil {
+	// 	panic(err)
+	// } else {
+	// 	fmt.Fprintf(os.Stderr, "repo [%s]\n", repo)
+	// }
 }

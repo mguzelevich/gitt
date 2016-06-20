@@ -8,6 +8,11 @@ git tools - tools for multiple git repos handling
 
 # build from sources
 
+install git2go https://github.com/libgit2/git2go
+```
+gb vendor fetch github.com/libgit2/git2go
+```
+
 ```
 GOPATH = /home/work
 
@@ -15,9 +20,6 @@ mkdir -p $GOPATH/src
 
 cd $GOPATH
 go get github.com/constabulary/gb/...
-sudo cp bin/gb /usr/bin/
-sudo cp bin/gb-vendor /usr/bin/
-rm -rf src/github.com
 
 cd $GOPATH/src
 git clone git@github.com:mguzelevich/gitt.git
