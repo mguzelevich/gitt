@@ -206,7 +206,7 @@ func initGitStatusParser(p *parser.OutputParser) error {
 	p.RegSection(GSST_FOOTER,
 		[]parser.OutLineRE{
 			parser.NewRE("no_changes", `^no changes added to commit \(use "git add" and/or "git commit -a"\)$`),
-			parser.NewRE("nothing_to_commit_clean", `^nothing to commit, working directory clean$`),
+			parser.NewRE("nothing_to_commit_clean", `^nothing to commit, working (directory)|(tree) clean$`),
 			parser.NewRE("nothing_to_commit", `^nothing to commit \(create/copy files and use "git add" to track\)$`),
 			parser.NewRE("nothing_added_to_commit", `^nothing added to commit but untracked files present \(use "git add" to track\)$`),
 		},
