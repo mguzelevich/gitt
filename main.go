@@ -21,6 +21,7 @@ import (
 	"github.com/mguzelevich/gitt/git/push"
 	"github.com/mguzelevich/gitt/git/rebase"
 	"github.com/mguzelevich/gitt/git/status"
+	"github.com/mguzelevich/gitt/git/tag"
 )
 
 type Action struct {
@@ -32,6 +33,7 @@ var GIT_CHECKOUT = Action{Cmd: "checkout"}
 var GIT_DIFF = Action{Cmd: "diff"}
 var GIT_PULL = Action{Cmd: "pull"}
 var GIT_PUSH = Action{Cmd: "push"}
+var GIT_TAG = Action{Cmd: "tag"}
 var GIT_FETCH = Action{Cmd: "fetch"}
 var GIT_REBASE = Action{Cmd: "rebase"}
 var GIT_STATUS = Action{Cmd: "status"}
@@ -123,6 +125,8 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		p = branch.NewParser()
 	case GIT_COMMIT.Cmd:
 		p = commit.NewParser()
+	case GIT_TAG.Cmd:
+		p = tag.NewParser()
 	default:
 		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
