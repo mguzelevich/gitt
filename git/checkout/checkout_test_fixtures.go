@@ -6,5 +6,5 @@ type gitOutputTest struct {
 }
 
 var testGitCheckoutFixtures = []gitOutputTest{
-	gitOutputTest{`On branch BE-242`, `[BE-242] == []`},
+//gitOutputTest{`On branch BE-242`, `[BE-242] == []`},
 }

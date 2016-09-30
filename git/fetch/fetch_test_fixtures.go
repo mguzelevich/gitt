@@ -6,5 +6,5 @@ type gitOutputTest struct {
 }
 
 var testGitFetchFixtures = []gitOutputTest{
-	gitOutputTest{`test`, `test`},
+//gitOutputTest{`test`, `test`},
 }

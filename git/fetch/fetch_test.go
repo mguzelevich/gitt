@@ -10,7 +10,7 @@ import (
 )
 
 func TestFetchStatus_1(t *testing.T) {
-	for i, fixture := range testGitPullFixtures {
+	for i, fixture := range testGitFetchFixtures {
 		buffer := bytes.Buffer{}
 		buffer.Write([]byte(fixture.input))
 
