@@ -17,6 +17,7 @@ import (
 	"github.com/mguzelevich/gitt/git/commit"
 	"github.com/mguzelevich/gitt/git/diff"
 	"github.com/mguzelevich/gitt/git/fetch"
+	"github.com/mguzelevich/gitt/git/merge"
 	"github.com/mguzelevich/gitt/git/pull"
 	"github.com/mguzelevich/gitt/git/push"
 	"github.com/mguzelevich/gitt/git/rebase"
@@ -29,16 +30,17 @@ type Action struct {
 	Args []string
 }
 
+var GIT_BRANCH = Action{Cmd: "branch"}
 var GIT_CHECKOUT = Action{Cmd: "checkout"}
+var GIT_COMMIT = Action{Cmd: "commit"}
 var GIT_DIFF = Action{Cmd: "diff"}
+var GIT_FETCH = Action{Cmd: "fetch"}
+var GIT_MERGE = Action{Cmd: "merge"}
 var GIT_PULL = Action{Cmd: "pull"}
 var GIT_PUSH = Action{Cmd: "push"}
-var GIT_TAG = Action{Cmd: "tag"}
-var GIT_FETCH = Action{Cmd: "fetch"}
 var GIT_REBASE = Action{Cmd: "rebase"}
 var GIT_STATUS = Action{Cmd: "status"}
-var GIT_BRANCH = Action{Cmd: "branch"}
-var GIT_COMMIT = Action{Cmd: "commit"}
+var GIT_TAG = Action{Cmd: "tag"}
 
 var dirs = []string{}
 var gitbinary string
@@ -127,6 +129,8 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		p = commit.NewParser()
 	case GIT_TAG.Cmd:
 		p = tag.NewParser()
+	case GIT_MERGE.Cmd:
+		p = merge.NewParser()
 	default:
 		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
