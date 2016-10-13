@@ -53,7 +53,12 @@ func checkError(err error) {
 
 func walkerGetGitRepo(path string, f os.FileInfo, err error) error {
 	if f.IsDir() && filepath.Base(path) == ".git" {
-		dirs = append(dirs, path[:strings.LastIndex(path, "/")])
+		if path == ".git" {
+			dirs = append(dirs, ".")
+		} else {
+			idx := strings.LastIndex(path, "/")
+			dirs = append(dirs, path[:idx])
+		}
 		return filepath.SkipDir
 	}
 	return nil

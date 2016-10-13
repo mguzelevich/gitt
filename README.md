@@ -1,11 +1,16 @@
 # gitt [![Build Status](https://travis-ci.org/mguzelevich/gitt.svg?branch=master)](https://travis-ci.org/mguzelevich/gitt)
 
-
 git tools - tools for multiple git repos handling
 
 - recursive `git status`
 - recursive `git pull`
 - ...
+
+# installation
+
+```
+go get github.com/mguzelevich/gitt/...
+```
 
 # build from sources
 
