@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/crypto/ssh/terminal"
+
 	"github.com/mguzelevich/gitt/parser"
 
 	"github.com/mguzelevich/gitt/git/branch"
@@ -44,6 +46,8 @@ var GIT_TAG = Action{Cmd: "tag"}
 
 var dirs = []string{}
 var gitbinary string
+
+var TerminalMode bool
 
 func checkError(err error) {
 	if err != nil {
@@ -102,7 +106,7 @@ func gitCmd(idx int, path string, gitbinary string, action Action, p *parser.Out
 		fmt.Fprintf(os.Stderr, "DBG:\n%s\n", p.DebugOutput.String())
 		fmt.Fprintf(os.Stderr, "</ERROR>\n")
 	} else {
-		fmt.Fprintf(os.Stderr, "= %02d = %s %s", idx, path, dscr.AsString(dscr, true))
+		fmt.Fprintf(os.Stderr, "= %02d = %s %s", idx, path, dscr.AsString(dscr, TerminalMode))
 		// fmt.Printf("%s", out.String())
 		// fmt.Printf(status.DebugOutput.String())
 	}
@@ -170,6 +174,8 @@ func init() {
 }
 
 func main() {
+	TerminalMode = terminal.IsTerminal(int(os.Stdout.Fd()))
+
 	flags := map[string]interface{}{
 		"root":  ".",
 		"debug": false,

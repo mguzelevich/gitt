@@ -9,27 +9,13 @@ git tools - tools for multiple git repos handling
 # installation
 
 ```
-go get github.com/mguzelevich/gitt/...
+go get github.com/mguzelevich/gitt/cmd/... 
 ```
 
 # build from sources
 
 ```
-GOPATH = /home/work
-
-mkdir -p $GOPATH/src
-
-cd $GOPATH
-go get github.com/constabulary/gb/...
-sudo cp bin/gb /usr/bin/
-sudo cp bin/gb-vendor /usr/bin/
-rm -rf src/github.com
-
-cd $GOPATH/src
-git clone git@github.com:mguzelevich/gitt.git
-
-cd $GOPATH
-gb build
+...
 ```
 
 # Examples
