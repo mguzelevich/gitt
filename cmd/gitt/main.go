@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -46,8 +47,29 @@ var GIT_TAG = Action{Cmd: "tag"}
 
 var dirs = []string{}
 var gitbinary string
+var JOBS int
 
 var TerminalMode bool
+
+type Supervisor struct {
+	wg sync.WaitGroup
+}
+
+func (s *Supervisor) taskStarted(args ...interface{}) {
+	// fmt.Fprintf(os.Stderr, "WG: %s %s\n", "+1", args)
+	s.wg.Add(1)
+}
+
+func (s *Supervisor) taskDone(args ...interface{}) {
+	// fmt.Fprintf(os.Stderr, "WG: %s %s\n", "-1", args)
+	s.wg.Done()
+}
+
+func (s *Supervisor) wgWait(args ...interface{}) {
+	// fmt.Fprintf(os.Stderr, "WG: batch wait [%s]\n", args)
+	s.wg.Wait()
+	// fmt.Fprintf(os.Stderr, "WG: batch wait [%s] done\n", args)
+}
 
 func checkError(err error) {
 	if err != nil {
@@ -144,16 +166,30 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
 
+	supervisor := Supervisor{}
+
+	processedIdx := 0
 	for i, d := range dirs {
 		idx := i + 1
 		l := len(repos)
 		process := repos[idx]
 		if l == 0 || process {
-			if err := gitCmd(idx, d, gitbinary, action, p); err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+			processedIdx++
+			if processedIdx%JOBS == 0 {
+				supervisor.wgWait()
 			}
+
+			supervisor.taskStarted(idx, d)
+			go func(idx int, d string) {
+				defer supervisor.taskDone(idx, d)
+				if err := gitCmd(idx, d, gitbinary, action, p); err != nil {
+					fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+				}
+			}(idx, d)
 		}
 	}
+	// fmt.Fprintf(os.Stderr, "WG: final wait [%s]\n", processedIdx)
+	supervisor.wg.Wait()
 	return nil
 }
 
@@ -171,14 +207,16 @@ func init() {
 	gb, err := exec.LookPath("git")
 	checkError(err)
 	gitbinary = gb
+	JOBS = 10
 }
 
 func main() {
 	TerminalMode = terminal.IsTerminal(int(os.Stdout.Fd()))
 
 	flags := map[string]interface{}{
-		"root":  ".",
 		"debug": false,
+		"root":  ".",
+		"jobs":  1,
 	}
 	command := ""
 	args := []string{}
@@ -197,7 +235,8 @@ func main() {
 				}
 				switch parts[0] {
 				default:
-					fmt.Fprintf(os.Stderr, "unknown flag [%s]\n", parts)
+					fmt.Fprintf(os.Stderr, "! unknown flag [%s]\n", parts)
+					return
 				case "-r":
 					for _, r := range strings.SplitN(parts[1], ",", -1) {
 						if rr := strings.SplitN(r, "-", -1); len(rr) > 1 {
@@ -216,6 +255,8 @@ func main() {
 					}
 				case "--root":
 					flags["root"] = parts[1]
+				case "--jobs":
+					flags["jobs"], _ = strconv.Atoi(parts[1])
 				case "--debug":
 					flags["debug"] = true
 				}
@@ -224,6 +265,8 @@ func main() {
 			}
 		}
 	}
+
+	JOBS = flags["jobs"].(int)
 
 	switch {
 	case flags["debug"]:
