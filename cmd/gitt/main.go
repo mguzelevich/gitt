@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -46,8 +47,13 @@ var GIT_TAG = Action{Cmd: "tag"}
 
 var dirs = []string{}
 var gitbinary string
+var JOBS int
 
 var TerminalMode bool
+
+type Supervisor struct {
+	wg sync.WaitGroup
+}
 
 func checkError(err error) {
 	if err != nil {
@@ -144,16 +150,30 @@ func actionApplier(dirs []string, repos map[int]bool, action Action) error {
 		return errors.New(fmt.Sprintf("unknown [%s] mode", action))
 	}
 
+	sv := Supervisor{}
+
+	processedIdx := 0
 	for i, d := range dirs {
 		idx := i + 1
 		l := len(repos)
 		process := repos[idx]
 		if l == 0 || process {
-			if err := gitCmd(idx, d, gitbinary, action, p); err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+			processedIdx++
+			sv.wg.Add(1)
+			// Launch a goroutine to fetch the URL.
+			go func(idx int, d string) {
+				defer sv.wg.Done()
+				if err := gitCmd(idx, d, gitbinary, action, p); err != nil {
+					fmt.Fprintf(os.Stderr, "[%s] processing failed\n", d)
+				}
+			}(idx, d)
+			if processedIdx%JOBS == 0 {
+				sv.wg.Wait()
+				processedIdx = 0
 			}
 		}
 	}
+	sv.wg.Wait()
 	return nil
 }
 
@@ -171,14 +191,16 @@ func init() {
 	gb, err := exec.LookPath("git")
 	checkError(err)
 	gitbinary = gb
+	JOBS = 10
 }
 
 func main() {
 	TerminalMode = terminal.IsTerminal(int(os.Stdout.Fd()))
 
 	flags := map[string]interface{}{
-		"root":  ".",
 		"debug": false,
+		"root":  ".",
+		"jobs":  1,
 	}
 	command := ""
 	args := []string{}
@@ -216,6 +238,8 @@ func main() {
 					}
 				case "--root":
 					flags["root"] = parts[1]
+				case "--jobs":
+					flags["jobs"], _ = strconv.Atoi(parts[1])
 				case "--debug":
 					flags["debug"] = true
 				}
@@ -224,6 +248,8 @@ func main() {
 			}
 		}
 	}
+
+	JOBS = flags["jobs"].(int)
 
 	switch {
 	case flags["debug"]:
